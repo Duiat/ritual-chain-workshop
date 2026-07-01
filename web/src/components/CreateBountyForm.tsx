@@ -5,7 +5,7 @@ import { useAccount } from "wagmi";
 import { parseEther, parseEventLogs } from "viem";
 import { contractAddress, isContractConfigured } from "@/config/contract";
 import { ritualChain } from "@/config/wagmi";
-import aiJudgeAbi from "@/abi/AIJudge";
+import { activeAbi } from "@/config/contract";
 import { useWriteTx } from "@/hooks/useWriteTx";
 import {
   Card,
@@ -43,7 +43,7 @@ export function CreateBountyForm({ onCreated }: { onCreated?: (bountyId: bigint)
   const tx = useWriteTx((receipt) => {
     try {
       const logs = parseEventLogs({
-        abi: aiJudgeAbi,
+        abi: activeAbi,
         eventName: "BountyCreated",
         logs: receipt.logs,
       });
@@ -93,7 +93,7 @@ export function CreateBountyForm({ onCreated }: { onCreated?: (bountyId: bigint)
     try {
       await tx.run({
         address: contractAddress,
-        abi: aiJudgeAbi,
+        abi: activeAbi,
         functionName: "createBounty",
         args: [title.trim(), rubric.trim(), deadlineTs],
         value,

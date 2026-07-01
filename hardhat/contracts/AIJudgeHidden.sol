@@ -3,32 +3,20 @@ pragma solidity ^0.8.24;
 
 import {PrecompileConsumer} from "./utils/PrecompileConsumer.sol";
 
-interface IRitualWallet {
-    function deposit(uint256 lockDuration) external payable;
-
-    function depositFor(address user, uint256 lockDuration) external payable;
-
-    function withdraw(uint256 amount) external;
-
-    function balanceOf(address) external view returns (uint256);
-
-    function lockUntil(address) external view returns (uint256);
-}
-
-contract AIJudge is PrecompileConsumer {
+/// @title AIJudgeHidden
+/// @notice Advanced track: encrypted answers stay opaque on-chain until Ritual TEE
+///         batch judging decrypts them inside the LLM precompile enclave.
+contract AIJudgeHidden is PrecompileConsumer {
     uint256 public constant MAX_SUBMISSIONS = 10;
-    uint256 public constant MAX_ANSWER_LENGTH = 2_000;
+    uint256 public constant MAX_CIPHERTEXT_LENGTH = 4_096;
 
     uint256 public nextBountyId = 1;
 
-    IRitualWallet wallet =
-        IRitualWallet(0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948);
-
     struct Submission {
         address submitter;
-        bytes32 commitment;
-        string answer;
-        bool revealed;
+        bytes encryptedAnswer;
+        bytes secretSignature;
+        bytes32 secretsHash;
     }
 
     struct Bounty {
@@ -60,17 +48,11 @@ contract AIJudge is PrecompileConsumer {
         uint256 deadline
     );
 
-    event CommitmentSubmitted(
+    event EncryptedAnswerSubmitted(
         uint256 indexed bountyId,
         uint256 indexed submissionIndex,
         address indexed submitter,
-        bytes32 commitment
-    );
-
-    event AnswerRevealed(
-        uint256 indexed bountyId,
-        uint256 indexed submissionIndex,
-        address indexed submitter
+        bytes32 secretsHash
     );
 
     event AllAnswersJudged(uint256 indexed bountyId, bytes aiReview);
@@ -92,13 +74,10 @@ contract AIJudge is PrecompileConsumer {
         _;
     }
 
-    function computeCommitment(
-        string calldata answer,
-        bytes32 salt,
-        address submitter,
-        uint256 bountyId
-    ) public pure returns (bytes32) {
-        return keccak256(abi.encode(answer, salt, submitter, bountyId));
+    function submissionSecretKey(
+        uint256 submissionIndex
+    ) public pure returns (string memory) {
+        return string.concat("SUB_", _uintToString(submissionIndex));
     }
 
     function createBounty(
@@ -112,7 +91,6 @@ contract AIJudge is PrecompileConsumer {
         bountyId = nextBountyId++;
 
         Bounty storage bounty = bounties[bountyId];
-
         bounty.owner = msg.sender;
         bounty.title = title;
         bounty.rubric = rubric;
@@ -123,82 +101,50 @@ contract AIJudge is PrecompileConsumer {
         emit BountyCreated(bountyId, msg.sender, title, msg.value, deadline);
     }
 
-    function submitCommitment(
+    /// @notice Store an ECIES ciphertext. Plaintext never touches chain state.
+    function submitEncryptedAnswer(
         uint256 bountyId,
-        bytes32 commitment
+        bytes calldata encryptedAnswer,
+        bytes calldata secretSignature
     ) external bountyExists(bountyId) {
         Bounty storage bounty = bounties[bountyId];
 
         require(block.timestamp < bounty.deadline, "submission phase closed");
         require(!bounty.judged, "already judged");
         require(!bounty.finalized, "already finalized");
-        require(commitment != bytes32(0), "empty commitment");
+        require(encryptedAnswer.length > 0, "empty ciphertext");
+        require(
+            encryptedAnswer.length <= MAX_CIPHERTEXT_LENGTH,
+            "ciphertext too long"
+        );
+        require(secretSignature.length > 0, "signature required");
         require(
             bounty.submissions.length < MAX_SUBMISSIONS,
             "too many submissions"
         );
 
-        uint256 existingIndex = _findUnrevealedIndex(bountyId, msg.sender);
-        if (existingIndex != type(uint256).max) {
-            Submission storage existing = bounty.submissions[existingIndex];
-            existing.commitment = commitment;
-            emit CommitmentSubmitted(
-                bountyId,
-                existingIndex,
-                msg.sender,
-                commitment
-            );
-            return;
-        }
+        bytes32 secretsHash = keccak256(encryptedAnswer);
 
         bounty.submissions.push(
             Submission({
                 submitter: msg.sender,
-                commitment: commitment,
-                answer: "",
-                revealed: false
+                encryptedAnswer: encryptedAnswer,
+                secretSignature: secretSignature,
+                secretsHash: secretsHash
             })
         );
 
-        emit CommitmentSubmitted(
+        emit EncryptedAnswerSubmitted(
             bountyId,
             bounty.submissions.length - 1,
             msg.sender,
-            commitment
+            secretsHash
         );
     }
 
-    function revealAnswer(
-        uint256 bountyId,
-        string calldata answer,
-        bytes32 salt
-    ) external bountyExists(bountyId) {
-        Bounty storage bounty = bounties[bountyId];
-
-        require(block.timestamp >= bounty.deadline, "submission phase open");
-        require(!bounty.judged, "already judged");
-        require(!bounty.finalized, "already finalized");
-        require(bytes(answer).length > 0, "empty answer");
-        require(bytes(answer).length <= MAX_ANSWER_LENGTH, "answer too long");
-
-        uint256 index = _findUnrevealedIndex(bountyId, msg.sender);
-        require(index != type(uint256).max, "no commitment to reveal");
-
-        Submission storage submission = bounty.submissions[index];
-        bytes32 expected = computeCommitment(
-            answer,
-            salt,
-            msg.sender,
-            bountyId
-        );
-        require(submission.commitment == expected, "invalid reveal");
-
-        submission.answer = answer;
-        submission.revealed = true;
-
-        emit AnswerRevealed(bountyId, index, msg.sender);
-    }
-
+    /// @notice Batch-judge via Ritual LLM. `llmInput` must bundle every on-chain
+    ///         ciphertext as `encryptedSecrets` with matching signatures so the
+    ///         TEE can decrypt and substitute placeholders in one inference call.
     function judgeAll(
         uint256 bountyId,
         bytes calldata llmInput
@@ -208,7 +154,7 @@ contract AIJudge is PrecompileConsumer {
         require(block.timestamp >= bounty.deadline, "submission phase open");
         require(!bounty.judged, "already judged");
         require(!bounty.finalized, "already finalized");
-        require(_revealedCount(bountyId) > 0, "no revealed submissions");
+        require(bounty.submissions.length > 0, "no submissions");
 
         bytes memory output = _executePrecompile(
             LLM_INFERENCE_PRECOMPILE,
@@ -240,10 +186,6 @@ contract AIJudge is PrecompileConsumer {
         require(bounty.judged, "not judged yet");
         require(!bounty.finalized, "already finalized");
         require(winnerIndex < bounty.submissions.length, "invalid index");
-        require(
-            bounty.submissions[winnerIndex].revealed,
-            "winner not revealed"
-        );
 
         bounty.finalized = true;
         bounty.winnerIndex = winnerIndex;
@@ -273,14 +215,11 @@ contract AIJudge is PrecompileConsumer {
             bool judged,
             bool finalized,
             uint256 submissionCount,
-            uint256 revealedCount,
             uint256 winnerIndex,
             bytes memory aiReview
         )
     {
         Bounty storage bounty = bounties[bountyId];
-        submissionCount = bounty.submissions.length;
-        revealedCount = _revealedCount(bountyId);
 
         owner = bounty.owner;
         title = bounty.title;
@@ -289,6 +228,7 @@ contract AIJudge is PrecompileConsumer {
         deadline = bounty.deadline;
         judged = bounty.judged;
         finalized = bounty.finalized;
+        submissionCount = bounty.submissions.length;
         winnerIndex = bounty.winnerIndex;
         aiReview = bounty.aiReview;
     }
@@ -302,49 +242,42 @@ contract AIJudge is PrecompileConsumer {
         bountyExists(bountyId)
         returns (
             address submitter,
-            bytes32 commitment,
-            string memory answer,
-            bool revealed
+            bytes memory encryptedAnswer,
+            bytes memory secretSignature,
+            bytes32 secretsHash,
+            string memory secretKey
         )
     {
         Bounty storage bounty = bounties[bountyId];
-
         require(index < bounty.submissions.length, "invalid index");
 
         Submission storage submission = bounty.submissions[index];
 
         return (
             submission.submitter,
-            submission.commitment,
-            submission.revealed ? submission.answer : "",
-            submission.revealed
+            submission.encryptedAnswer,
+            submission.secretSignature,
+            submission.secretsHash,
+            submissionSecretKey(index)
         );
     }
 
-    function _findUnrevealedIndex(
-        uint256 bountyId,
-        address submitter
-    ) internal view returns (uint256) {
-        Submission[] storage submissions = bounties[bountyId].submissions;
-        for (uint256 i = 0; i < submissions.length; i++) {
-            if (
-                submissions[i].submitter == submitter &&
-                !submissions[i].revealed
-            ) {
-                return i;
-            }
+    function _uintToString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
         }
-        return type(uint256).max;
-    }
-
-    function _revealedCount(uint256 bountyId) internal view returns (uint256) {
-        uint256 count = 0;
-        Submission[] storage submissions = bounties[bountyId].submissions;
-        for (uint256 i = 0; i < submissions.length; i++) {
-            if (submissions[i].revealed) {
-                count++;
-            }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
         }
-        return count;
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        return string(buffer);
     }
 }

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import aiJudgeAbi from "@/abi/AIJudge";
-import { contractAddress } from "@/config/contract";
+import { activeAbi, contractAddress } from "@/config/contract";
 import { ritualChain } from "@/config/wagmi";
 import type { Bounty } from "@/lib/bounty";
 import { decodeAiReview } from "@/lib/aiReview";
@@ -58,7 +57,7 @@ export function FinalizeWinner({
     try {
       await tx.run({
         address: contractAddress,
-        abi: aiJudgeAbi,
+        abi: activeAbi,
         functionName: "finalizeWinner",
         args: [bountyId, BigInt(idxNum)],
         chainId: ritualChain.id,

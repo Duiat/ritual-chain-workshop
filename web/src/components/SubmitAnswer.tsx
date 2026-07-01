@@ -6,7 +6,12 @@ import { useNow } from "@/hooks/useNow";
 import aiJudgeAbi from "@/abi/AIJudge";
 import { contractAddress } from "@/config/contract";
 import { ritualChain } from "@/config/wagmi";
-import { canSubmit, type Bounty } from "@/lib/bounty";
+import { canCommit, type Bounty } from "@/lib/bounty";
+import {
+  computeCommitment,
+  generateSalt,
+  saveSalt,
+} from "@/lib/commitment";
 import { useWriteTx } from "@/hooks/useWriteTx";
 import {
   Card,
@@ -16,6 +21,7 @@ import {
   Textarea,
   Button,
   TxStatus,
+  Notice,
 } from "@/components/ui";
 
 const explorerBase = ritualChain.blockExplorers?.default.url;
@@ -29,7 +35,7 @@ export function SubmitAnswer({
   bounty: Bounty;
   onSubmitted: () => void;
 }) {
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const [answer, setAnswer] = useState("");
   const now = useNow();
   const tx = useWriteTx(() => {
@@ -37,20 +43,29 @@ export function SubmitAnswer({
     onSubmitted();
   });
 
-  // Submission window closed — nothing to show.
-  if (!canSubmit(bounty, now / 1000)) return null;
+  if (!canCommit(bounty, now / 1000)) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!answer.trim() || !contractAddress) return;
+    if (!answer.trim() || !contractAddress || !address) return;
+
+    const salt = generateSalt();
+    const commitment = computeCommitment(
+      answer.trim(),
+      salt,
+      address,
+      bountyId,
+    );
+
     try {
       await tx.run({
         address: contractAddress,
         abi: aiJudgeAbi,
-        functionName: "submitAnswer",
-        args: [bountyId, answer.trim()],
+        functionName: "submitCommitment",
+        args: [bountyId, commitment],
         chainId: ritualChain.id,
       });
+      saveSalt(bountyId, salt);
     } catch {
       /* surfaced via tx.state */
     }
@@ -59,11 +74,15 @@ export function SubmitAnswer({
   return (
     <Card>
       <CardHeader
-        title="Submit an answer"
-        subtitle="Open until the deadline. One entry, judged against the rubric."
+        title="Submit a commitment"
+        subtitle="Only a hash is stored on-chain until the reveal phase. Save your answer locally."
       />
       <CardBody>
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <Notice tone="indigo">
+          Your answer stays hidden until you reveal it after the deadline. The
+          salt is saved in this browser for reveal.
+        </Notice>
+        <form onSubmit={handleSubmit} className="mt-3 space-y-3">
           <Field label="Your answer">
             <Textarea
               value={answer}
@@ -77,7 +96,7 @@ export function SubmitAnswer({
             disabled={!isConnected || !answer.trim() || tx.isBusy}
             className="w-full"
           >
-            {tx.isBusy ? "Submitting…" : "Submit answer"}
+            {tx.isBusy ? "Submitting…" : "Submit commitment"}
           </Button>
           {!isConnected && (
             <p className="text-xs text-zinc-500">

@@ -1,14 +1,13 @@
 "use client";
 
 import { useReadContract } from "wagmi";
-import aiJudgeAbi from "@/abi/AIJudge";
-import { contractAddress } from "@/config/contract";
+import { contractAddress, activeAbi } from "@/config/contract";
 import { ritualChain } from "@/config/wagmi";
 import { shortenAddress } from "@/lib/format";
 import type { JudgeResult } from "@/lib/aiReview";
 import { Card, CardHeader, CardBody, Badge } from "@/components/ui";
 
-export function SubmissionsList({
+export function HiddenSubmissionsList({
   bountyId,
   count,
   judge,
@@ -24,16 +23,16 @@ export function SubmissionsList({
   return (
     <Card>
       <CardHeader
-        title="Submissions"
-        subtitle="Commitments are visible; answers appear only after reveal."
+        title="Encrypted submissions"
+        subtitle="Ciphertext on-chain; plaintext only inside Ritual TEE during judging."
         action={<Badge tone="zinc">{count}</Badge>}
       />
       <CardBody className="space-y-3">
         {count === 0 ? (
-          <p className="text-sm text-zinc-500">No commitments yet.</p>
+          <p className="text-sm text-zinc-500">No encrypted submissions yet.</p>
         ) : (
           indices.map((i) => (
-            <SubmissionRow
+            <HiddenSubmissionRow
               key={i}
               bountyId={bountyId}
               index={i}
@@ -48,7 +47,7 @@ export function SubmissionsList({
   );
 }
 
-function SubmissionRow({
+function HiddenSubmissionRow({
   bountyId,
   index,
   ranking,
@@ -63,7 +62,7 @@ function SubmissionRow({
 }) {
   const { data, isLoading } = useReadContract({
     address: contractAddress,
-    abi: aiJudgeAbi,
+    abi: activeAbi,
     functionName: "getSubmission",
     args: [bountyId, BigInt(index)],
     chainId: ritualChain.id,
@@ -71,9 +70,8 @@ function SubmissionRow({
   });
 
   const submitter = data?.[0];
-  const commitment = data?.[1];
-  const answer = data?.[2];
-  const revealed = data?.[3];
+  const ciphertext = data?.[1];
+  const secretKey = data?.[4];
 
   return (
     <div
@@ -93,11 +91,7 @@ function SubmissionRow({
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          {revealed ? (
-            <Badge tone="green">Revealed</Badge>
-          ) : (
-            <Badge tone="amber">Hidden</Badge>
-          )}
+          <Badge tone="indigo">Encrypted</Badge>
           {ranking ? <Badge tone="zinc">score {ranking.score}</Badge> : null}
           {isWinner ? (
             <Badge tone="green">Winner</Badge>
@@ -108,17 +102,17 @@ function SubmissionRow({
       </div>
 
       <p className="mt-2 font-mono text-xs text-zinc-500 break-all">
-        {commitment
-          ? `commitment: ${commitment.slice(0, 10)}…${commitment.slice(-8)}`
+        {secretKey ? `tee key: ${secretKey}` : ""}
+        {ciphertext
+          ? ` · cipher: ${String(ciphertext).slice(0, 12)}…${String(ciphertext).slice(-8)}`
           : isLoading
             ? ""
-            : "-"}
+            : ""}
       </p>
 
-      <p className="mt-2 whitespace-pre-wrap break-words text-sm text-zinc-200">
-        {revealed
-          ? (answer ?? "-")
-          : "Answer hidden until reveal phase completes."}
+      <p className="mt-2 text-sm text-zinc-400">
+        Answer hidden until TEE judging completes. Only the AI review becomes
+        public after judgeAll.
       </p>
 
       {ranking?.reason ? (

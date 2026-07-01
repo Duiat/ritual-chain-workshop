@@ -2,6 +2,7 @@
 
 import type { Bounty } from "@/lib/bounty";
 import { getBountyStatus, STATUS_META } from "@/lib/bounty";
+import { isTeeHiddenMode } from "@/config/contract";
 import { useNow } from "@/hooks/useNow";
 import { shortenAddress, formatReward, formatTimestamp, formatRelative } from "@/lib/format";
 import { Card, CardHeader, CardBody, Badge, Stat } from "@/components/ui";
@@ -47,7 +48,14 @@ export function BountyDetail({
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
           <Stat label="Reward" value={formatReward(bounty.reward)} />
-          <Stat label="Submissions" value={bounty.submissionCount.toString()} />
+          <Stat
+            label={isTeeHiddenMode ? "Encrypted" : "Commitments"}
+            value={
+              isTeeHiddenMode
+                ? bounty.submissionCount.toString()
+                : `${bounty.submissionCount.toString()} (${(bounty.revealedCount ?? 0n).toString()} revealed)`
+            }
+          />
           <Stat
             label="Deadline"
             value={

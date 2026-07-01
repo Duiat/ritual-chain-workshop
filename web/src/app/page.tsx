@@ -6,7 +6,12 @@ import { CreateBountyForm } from "@/components/CreateBountyForm";
 import { LoadBountyPanel } from "@/components/LoadBountyPanel";
 import { BountyView } from "@/components/BountyView";
 import { useRecentBounties } from "@/hooks/useRecentBounties";
-import { isContractConfigured, contractAddress } from "@/config/contract";
+import {
+  contractMode,
+  isContractConfigured,
+  contractAddress,
+  isTeeHiddenMode,
+} from "@/config/contract";
 import { ritualChain } from "@/config/wagmi";
 import { shortenAddress } from "@/lib/format";
 import { Notice } from "@/components/ui";
@@ -54,15 +59,21 @@ export default function Home() {
             Crowd-judged bounties, settled by AI.
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-zinc-400">
-            Submit answers to a bounty. After the deadline, Ritual AI ranks all submissions. The
-            bounty owner finalizes the winner.
+            {isTeeHiddenMode
+              ? "Submit ECIES-encrypted answers on-chain. Ritual TEE decrypts them only during one batch LLM judge call. The owner finalizes the winner."
+              : "Submit a commitment hash before the deadline. Reveal your answer after it closes. Ritual AI ranks revealed submissions; the owner finalizes the winner."}
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
+            <span className="rounded-full bg-indigo-500/10 px-3 py-1 ring-1 ring-inset ring-indigo-500/30 text-indigo-200">
+              Mode: {contractMode === "tee-hidden" ? "Advanced (TEE hidden)" : "Required (commit-reveal)"}
+            </span>
             <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-inset ring-white/10">
               AI review is advisory. The owner finalizes the winner.
             </span>
             <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-inset ring-white/10">
-              All submissions are judged together after the deadline.
+              {isTeeHiddenMode
+                ? "Plaintext exists only inside the Ritual TEE during judging."
+                : "Answers stay hidden until the reveal phase after the deadline."}
             </span>
             <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-inset ring-white/10">
               Only one winner receives the bounty reward.

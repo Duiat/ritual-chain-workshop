@@ -5,12 +5,18 @@ import { useAccount } from "wagmi";
 import { useBounty } from "@/hooks/useBounty";
 import { isAddressEqual } from "@/lib/format";
 import { decodeAiReview } from "@/lib/aiReview";
+import { isTeeHiddenMode } from "@/config/contract";
 import { BountyDetail } from "@/components/BountyDetail";
 import { SubmitAnswer } from "@/components/SubmitAnswer";
+import { RevealAnswer } from "@/components/RevealAnswer";
+import { SubmitEncryptedAnswer } from "@/components/SubmitEncryptedAnswer";
+import { GrantJudgingAccess } from "@/components/GrantJudgingAccess";
 import { JudgeAll } from "@/components/JudgeAll";
+import { JudgeAllHidden } from "@/components/JudgeAllHidden";
 import { FinalizeWinner } from "@/components/FinalizeWinner";
 import { AIReviewDisplay } from "@/components/AIReviewDisplay";
 import { SubmissionsList } from "@/components/SubmissionsList";
+import { HiddenSubmissionsList } from "@/components/HiddenSubmissionsList";
 import { Card, CardBody, Notice, Spinner } from "@/components/ui";
 
 export function BountyView({ bountyId }: { bountyId: bigint }) {
@@ -42,7 +48,6 @@ export function BountyView({ bountyId }: { bountyId: bigint }) {
     );
   }
 
-  // An owner of address(0) means the bounty doesn't exist yet.
   if (/^0x0+$/.test(bounty.owner)) {
     return (
       <Notice tone="amber">
@@ -56,20 +61,43 @@ export function BountyView({ bountyId }: { bountyId: bigint }) {
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      {/* Left column: details + owner/participant actions */}
       <div className="space-y-4">
         <BountyDetail bountyId={bountyId} bounty={bounty} isOwner={isOwner} />
-        <SubmitAnswer
-          bountyId={bountyId}
-          bounty={bounty}
-          onSubmitted={reload}
-        />
-        <JudgeAll
-          bountyId={bountyId}
-          bounty={bounty}
-          isOwner={isOwner}
-          onJudged={reload}
-        />
+        {isTeeHiddenMode ? (
+          <>
+            <SubmitEncryptedAnswer
+              bountyId={bountyId}
+              bounty={bounty}
+              onSubmitted={reload}
+            />
+            <GrantJudgingAccess bountyId={bountyId} bounty={bounty} />
+            <JudgeAllHidden
+              bountyId={bountyId}
+              bounty={bounty}
+              isOwner={isOwner}
+              onJudged={reload}
+            />
+          </>
+        ) : (
+          <>
+            <SubmitAnswer
+              bountyId={bountyId}
+              bounty={bounty}
+              onSubmitted={reload}
+            />
+            <RevealAnswer
+              bountyId={bountyId}
+              bounty={bounty}
+              onRevealed={reload}
+            />
+            <JudgeAll
+              bountyId={bountyId}
+              bounty={bounty}
+              isOwner={isOwner}
+              onJudged={reload}
+            />
+          </>
+        )}
         <FinalizeWinner
           bountyId={bountyId}
           bounty={bounty}
@@ -78,17 +106,27 @@ export function BountyView({ bountyId }: { bountyId: bigint }) {
         />
       </div>
 
-      {/* Right column: AI review + submissions */}
       <div className="space-y-4">
         {bounty.judged && <AIReviewDisplay aiReview={bounty.aiReview} />}
-        <SubmissionsList
-          bountyId={bountyId}
-          count={Number(bounty.submissionCount)}
-          judge={judge}
-          finalWinner={
-            bounty.finalized ? Number(bounty.winnerIndex) : undefined
-          }
-        />
+        {isTeeHiddenMode ? (
+          <HiddenSubmissionsList
+            bountyId={bountyId}
+            count={Number(bounty.submissionCount)}
+            judge={judge}
+            finalWinner={
+              bounty.finalized ? Number(bounty.winnerIndex) : undefined
+            }
+          />
+        ) : (
+          <SubmissionsList
+            bountyId={bountyId}
+            count={Number(bounty.submissionCount)}
+            judge={judge}
+            finalWinner={
+              bounty.finalized ? Number(bounty.winnerIndex) : undefined
+            }
+          />
+        )}
       </div>
     </div>
   );

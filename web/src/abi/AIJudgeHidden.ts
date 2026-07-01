@@ -29,31 +29,6 @@ const abi = [
       },
       {
         "indexed": true,
-        "internalType": "uint256",
-        "name": "submissionIndex",
-        "type": "uint256"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "submitter",
-        "type": "address"
-      }
-    ],
-    "name": "AnswerRevealed",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint256",
-        "name": "bountyId",
-        "type": "uint256"
-      },
-      {
-        "indexed": true,
         "internalType": "address",
         "name": "owner",
         "type": "address"
@@ -104,11 +79,11 @@ const abi = [
       {
         "indexed": false,
         "internalType": "bytes32",
-        "name": "commitment",
+        "name": "secretsHash",
         "type": "bytes32"
       }
     ],
-    "name": "CommitmentSubmitted",
+    "name": "EncryptedAnswerSubmitted",
     "type": "event"
   },
   {
@@ -144,7 +119,7 @@ const abi = [
   },
   {
     "inputs": [],
-    "name": "MAX_ANSWER_LENGTH",
+    "name": "MAX_CIPHERTEXT_LENGTH",
     "outputs": [
       {
         "internalType": "uint256",
@@ -225,40 +200,6 @@ const abi = [
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "answer",
-        "type": "string"
-      },
-      {
-        "internalType": "bytes32",
-        "name": "salt",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "address",
-        "name": "submitter",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "bountyId",
-        "type": "uint256"
-      }
-    ],
-    "name": "computeCommitment",
-    "outputs": [
-      {
-        "internalType": "bytes32",
-        "name": "",
-        "type": "bytes32"
-      }
-    ],
-    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -360,11 +301,6 @@ const abi = [
       },
       {
         "internalType": "uint256",
-        "name": "revealedCount",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
         "name": "winnerIndex",
         "type": "uint256"
       },
@@ -398,19 +334,24 @@ const abi = [
         "type": "address"
       },
       {
+        "internalType": "bytes",
+        "name": "encryptedAnswer",
+        "type": "bytes"
+      },
+      {
+        "internalType": "bytes",
+        "name": "secretSignature",
+        "type": "bytes"
+      },
+      {
         "internalType": "bytes32",
-        "name": "commitment",
+        "name": "secretsHash",
         "type": "bytes32"
       },
       {
         "internalType": "string",
-        "name": "answer",
+        "name": "secretKey",
         "type": "string"
-      },
-      {
-        "internalType": "bool",
-        "name": "revealed",
-        "type": "bool"
       }
     ],
     "stateMutability": "view",
@@ -451,23 +392,19 @@ const abi = [
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "bountyId",
+        "name": "submissionIndex",
         "type": "uint256"
-      },
-      {
-        "internalType": "string",
-        "name": "answer",
-        "type": "string"
-      },
-      {
-        "internalType": "bytes32",
-        "name": "salt",
-        "type": "bytes32"
       }
     ],
-    "name": "revealAnswer",
-    "outputs": [],
-    "stateMutability": "nonpayable",
+    "name": "submissionSecretKey",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -478,12 +415,17 @@ const abi = [
         "type": "uint256"
       },
       {
-        "internalType": "bytes32",
-        "name": "commitment",
-        "type": "bytes32"
+        "internalType": "bytes",
+        "name": "encryptedAnswer",
+        "type": "bytes"
+      },
+      {
+        "internalType": "bytes",
+        "name": "secretSignature",
+        "type": "bytes"
       }
     ],
-    "name": "submitCommitment",
+    "name": "submitEncryptedAnswer",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
