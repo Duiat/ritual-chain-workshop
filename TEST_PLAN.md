@@ -114,3 +114,18 @@ Run: `cd hardhat && npx hardhat test`
 - Manual A1–A2 completes on Ritual testnet (advanced track).
 - No plaintext answer visible before reveal in M2 (required).
 - No plaintext on-chain in A3 (advanced).
+
+## Advanced track — Ritual testnet validation (completed)
+
+Primary submission validated on Ritual Chain with `AIJudgeHidden` at `0x0f131da151580aa2e0fb8788e044c1b786a928a4`:
+
+| Check | Result |
+|-------|--------|
+| A1 — Encrypted submit | Two users submitted ECIES ciphertext; no plaintext on-chain |
+| A1 — Grant access | Both users delegated secrets to bounty owner via `SecretsAccessControl` |
+| A2 — TEE batch judge | `judgeAll` succeeded (tx `0x18eb7e6b…`); `judged=true` |
+| A2 — Finalize | Winner index 0 (User1) paid 0.05 RITUAL (tx `0x180f62b1…`) |
+| A3 — Privacy | Submissions remain ciphertext on explorer after judging |
+| A3 — Batch LLM | Single `judgeAll` call for both submissions (not per-answer) |
+
+Bounty #1: title *"what is ritual"*, rubric *"correctness 50%"*, 2 submissions.
